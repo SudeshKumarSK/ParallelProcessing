@@ -115,6 +115,37 @@ async def main():
     print(f"[Result] ML Predictions: {list(ml_predictions.items())[:5]}...")  # Show first 5 predictions
     print(f"[Result] ML Predictions length: {len(ml_predictions)}")
 
+    """ 
+        ##### Why async main takes more time and sync main function?? #####
+        When dealing with large-scale CPU-bound tasks and inter-process communication, especially using ProcessPoolExecutor and returning a huge object like a dictionary of 100 million items, 
+        the performance bottleneck is very likely due to "Serialization Overhead / Pickle Bottleneck"
+
+        In this case of a huge object that is returned eventhough the multiple processes working on different cores finish the task early, they suffer from
+        the bottleneck of sending these objects over then IPC to the main process.
+
+        * The inference_func runs in a separate process.
+
+        * Its result — in this case, a massive predictions dictionary — must be pickled (serialized) by the worker process and then unpickled back in the main process.
+
+        This operation can take several seconds for very large objects like a dictionary with 100_000_000 entries.
+
+        So even though the inference finishes fast, We will be stuck in the serialization pipeline — which explains the "stuck after processing" feeling (you will feel this in the terminal)
+
+        ######## Sync is Faster Indeed ########
+            1] Everything runs in one process
+            2] No serialization is needed between processes
+            3] The data lives in the same memory space, so there's no communication overhead
+
+        Even if 4 cores compute in parallel:
+        When all 4 processes finish, and try to return large results, the main process gets flooded with:
+        4 x serialized data
+        4 x IPC overhead
+        4 x unpickling
+
+        This often causes:
+        * A pause / spike at the end of parallel execution
+        * CPU throttling during unpickling
+    """
 
 if __name__ == "__main__":
     start_time = time.time()
